@@ -53,6 +53,12 @@ const (
 	opMulMod     = 0x09
 	opExp        = 0x0a
 	opSignExtend = 0x0b
+	opLT         = 0x10
+	opGT         = 0x11
+	opSLT        = 0x12
+	opSGT        = 0x13
+	opEQ         = 0x14
+	opIsZero     = 0x15
 	opPop        = 0x50
 	opPush1      = 0x60
 	opPush32     = 0x7f
@@ -129,6 +135,54 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
 			stack = push(stack, uint256.NewInt(0).SMod(&x, &y).Bytes()...)
+		case opLT:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			if x.Lt(&y) {
+				stack = push(stack, uint256.NewInt(1).Bytes()...)
+			} else {
+				stack = push(stack, uint256.NewInt(0).Bytes()...)
+			}
+		case opGT:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			if x.Gt(&y) {
+				stack = push(stack, uint256.NewInt(1).Bytes()...)
+			} else {
+				stack = push(stack, uint256.NewInt(0).Bytes()...)
+			}
+		case opSLT:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			if x.Slt(&y) {
+				stack = push(stack, uint256.NewInt(1).Bytes()...)
+			} else {
+				stack = push(stack, uint256.NewInt(0).Bytes()...)
+			}
+		case opSGT:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			if x.Sgt(&y) {
+				stack = push(stack, uint256.NewInt(1).Bytes()...)
+			} else {
+				stack = push(stack, uint256.NewInt(0).Bytes()...)
+			}
+		case opEQ:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			if x.Eq(&y) {
+				stack = push(stack, uint256.NewInt(1).Bytes()...)
+			} else {
+				stack = push(stack, uint256.NewInt(0).Bytes()...)
+			}
+		case opIsZero:
+			var x uint256.Int
+			stack, x = pop1(stack)
+			if x.IsZero() {
+				stack = push(stack, uint256.NewInt(1).Bytes()...)
+			} else {
+				stack = push(stack, uint256.NewInt(0).Bytes()...)
+			}
 		}
 	}
 
@@ -150,6 +204,11 @@ func pop(stack []uint256.Int, n int) ([]uint256.Int, []uint256.Int) {
 	vals := make([]uint256.Int, n)
 	copy(vals, stack[:n])
 	return stack[n:], vals
+}
+
+func pop1(stack []uint256.Int) ([]uint256.Int, uint256.Int) {
+	stack, vals := pop(stack, 1)
+	return stack, vals[0]
 }
 
 func pop2(stack []uint256.Int) ([]uint256.Int, uint256.Int, uint256.Int) {
