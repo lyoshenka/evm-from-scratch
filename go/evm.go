@@ -39,21 +39,51 @@ type TestCase struct {
 	Expect expect
 }
 
+const (
+	opStop   = 0x00
+	opPush1  = 0x60
+	opPush32 = 0x7f
+	opPop    = 0x50
+)
+
 func evm(code []byte) (bool, []big.Int) {
 	var stack []big.Int
 	pc := 0
 
+LOOP:
 	for pc < len(code) {
 		op := code[pc]
 		pc++
-		
-		if op == 0x00 {
+
+		// cleaner than listing all push opcodes
+		if op >= opPush1 && op <= opPush32 {
+			len := int(op-opPush1) + 1
+			stack = push(stack, code[pc:(pc+len)]...)
+			pc += len
 		}
-		// TODO: Implement the EVM here!
+
+		switch op {
+		case opStop:
+			break LOOP
+		case opPop:
+			_ = stack[0]
+			stack = stack[1:]
+			pc++
+		}
+
 	}
 
-
 	return true, stack
+}
+
+func push(stack []big.Int, data ...byte) []big.Int {
+	front := make([]big.Int, len(data))
+	for i, b := range data {
+		f := big.NewInt(int64(b))
+		front[i] = *f
+	}
+	stack = append(front, stack...)
+	return stack
 }
 
 func main() {
@@ -69,7 +99,7 @@ func main() {
 	}
 
 	for index, test := range payload {
-		fmt.Printf("Test #%v of %v: %v\n", index + 1, len(payload), test.Name)
+		fmt.Printf("Test #%v of %v: %v\n", index+1, len(payload), test.Name)
 
 		bin, err := hex.DecodeString(test.Code.Bin)
 		if err != nil {
