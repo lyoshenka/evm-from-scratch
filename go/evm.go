@@ -74,9 +74,13 @@ const (
 	opSar  = 0x1d
 
 	opPop      = 0x50
+	opMLoad    = 0x51
+	opMStore   = 0x52
+	opMStore8  = 0x53
 	opJump     = 0x56
 	opJumpI    = 0x57
 	opPC       = 0x58
+	opMSize    = 0x59
 	opGas      = 0x5a
 	opJumpDest = 0x5b
 	opPush1    = 0x60
@@ -98,6 +102,7 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 	}()
 
 	pc := uint64(0)
+	mem := NewMemory()
 
 	for pc < uint64(len(code)) {
 		op := code[pc]
@@ -265,6 +270,20 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 			if !doJump.IsZero() {
 				pc = dest64
 			}
+		case opMLoad:
+			var offset uint256.Int
+			stack, offset = pop1(stack)
+			stack = push(stack, mem.Get(offset.Uint64()))
+		case opMStore:
+			var offset, val uint256.Int
+			stack, offset, val = pop2(stack)
+			mem.Put(offset.Uint64(), &val)
+		case opMStore8:
+			var offset, val uint256.Int
+			stack, offset, val = pop2(stack)
+			mem.PutByte(offset.Uint64(), byte(val.Uint64()))
+		case opMSize:
+			stack = push(stack, uint256.NewInt(mem.Len()))
 		}
 	}
 
