@@ -41,18 +41,21 @@ type TestCase struct {
 }
 
 const (
-	opStop   = 0x00
-	opPush1  = 0x60
-	opPush32 = 0x7f
-	opPop    = 0x50
-	opAdd    = 0x01
-	opMul    = 0x02
-	opSub    = 0x03
-	opDiv    = 0x04
-	opMod    = 0x06
-	opAddMod = 0x08
-	opMulMod = 0x09
-	opExp    = 0x0a
+	opStop       = 0x00
+	opAdd        = 0x01
+	opMul        = 0x02
+	opSub        = 0x03
+	opDiv        = 0x04
+	opSDiv       = 0x05
+	opMod        = 0x06
+	opSMod       = 0x07
+	opAddMod     = 0x08
+	opMulMod     = 0x09
+	opExp        = 0x0a
+	opSignExtend = 0x0b
+	opPop        = 0x50
+	opPush1      = 0x60
+	opPush32     = 0x7f
 )
 
 func evm(code []byte) (success bool, stack []uint256.Int) {
@@ -114,6 +117,18 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
 			stack = push(stack, uint256.NewInt(0).Exp(&x, &y).Bytes()...)
+		case opSignExtend:
+			var b, x uint256.Int
+			stack, b, x = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).ExtendSign(&x, &b).Bytes()...)
+		case opSDiv:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).SDiv(&x, &y).Bytes()...)
+		case opSMod:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).SMod(&x, &y).Bytes()...)
 		}
 	}
 
