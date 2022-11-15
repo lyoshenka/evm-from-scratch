@@ -15,10 +15,12 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
-	"math/big"
+
+	"github.com/holiman/uint256"
 )
 
 type code struct {
@@ -46,11 +48,11 @@ const (
 	opPop    = 0x50
 )
 
-func evm(code []byte) (bool, []big.Int) {
-	var stack []big.Int
+func evm(code []byte) (bool, []uint256.Int) {
+	var stack []uint256.Int
+	var err error
 	pc := 0
 
-LOOP:
 	for pc < len(code) {
 		op := code[pc]
 		pc++
@@ -64,10 +66,12 @@ LOOP:
 
 		switch op {
 		case opStop:
-			break LOOP
+			return true, stack
 		case opPop:
-			_ = stack[0]
-			stack = stack[1:]
+			stack, _, err = pop(stack, 1)
+			if err != nil {
+				return false, stack
+			}
 			pc++
 		}
 
@@ -76,14 +80,23 @@ LOOP:
 	return true, stack
 }
 
-func push(stack []big.Int, data ...byte) []big.Int {
-	front := make([]big.Int, len(data))
+func push(stack []uint256.Int, data ...byte) []uint256.Int {
+	front := make([]uint256.Int, len(data))
 	for i, b := range data {
-		f := big.NewInt(int64(b))
+		f := uint256.NewInt(uint64(b))
 		front[i] = *f
 	}
 	stack = append(front, stack...)
 	return stack
+}
+
+func pop(stack []uint256.Int, n int) ([]uint256.Int, []uint256.Int, error) {
+	if n > len(stack) {
+		return stack, nil, errors.New("stack smaller than n")
+	}
+	vals := make([]uint256.Int, n)
+	copy(vals, stack[:n])
+	return stack[n:], vals, nil
 }
 
 func main() {
@@ -106,10 +119,10 @@ func main() {
 			log.Fatal("Error during hex.DecodeString(): ", err)
 		}
 
-		var expectedStack []big.Int
+		var expectedStack []uint256.Int
 		for _, s := range test.Expect.Stack {
-			i, ok := new(big.Int).SetString(s, 0)
-			if !ok {
+			i, err := uint256.FromHex(s)
+			if err != nil {
 				log.Fatal("Error during big.Int.SetString(): ", err)
 			}
 			expectedStack = append(expectedStack, *i)
@@ -139,7 +152,7 @@ func main() {
 	}
 }
 
-func toStrings(stack []big.Int) []string {
+func toStrings(stack []uint256.Int) []string {
 	var strings []string
 	for _, s := range stack {
 		strings = append(strings, s.String())
