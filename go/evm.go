@@ -15,7 +15,6 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -47,19 +46,30 @@ const (
 	opPush32 = 0x7f
 	opPop    = 0x50
 	opAdd    = 0x01
+	opMul    = 0x02
+	opSub    = 0x03
+	opDiv    = 0x04
+	opMod    = 0x06
+	opAddMod = 0x08
+	opMulMod = 0x09
+	opExp    = 0x0a
 )
 
-func evm(code []byte) (bool, []uint256.Int) {
-	var stack []uint256.Int
-	var err error
+func evm(code []byte) (success bool, stack []uint256.Int) {
 	pc := 0
+
+	defer func() {
+		if err := recover(); err != nil {
+			fmt.Printf("ERR: %v\n", err)
+			success = false
+		}
+	}()
 
 	for pc < len(code) {
 		op := code[pc]
 		pc++
 
-		// cleaner than listing all push opcodes
-		if op >= opPush1 && op <= opPush32 {
+		if op >= opPush1 && op <= opPush32 { // cleaner than listing all push opcodes
 			len := int(op-opPush1) + 1
 			stack = push(stack, code[pc:(pc+len)]...)
 			pc += len
@@ -70,20 +80,40 @@ func evm(code []byte) (bool, []uint256.Int) {
 		case opStop:
 			return true, stack
 		case opPop:
-			stack, _, err = pop(stack, 1)
-			if err != nil {
-				return false, stack
-			}
+			stack, _ = pop(stack, 1)
 			pc++
 		case opAdd:
-			var vals []uint256.Int
-			stack, vals, err = pop(stack, 2)
-			if err != nil {
-				return false, stack
-			}
-			total := uint256.NewInt(0).Add(&vals[0], &vals[1])
-
-			stack = push(stack, total.Bytes()...)
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).Add(&x, &y).Bytes()...)
+		case opMul:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).Mul(&x, &y).Bytes()...)
+		case opSub:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).Sub(&x, &y).Bytes()...)
+		case opDiv:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).Div(&x, &y).Bytes()...)
+		case opMod:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).Mod(&x, &y).Bytes()...)
+		case opAddMod:
+			var x, y, z uint256.Int
+			stack, x, y, z = pop3(stack)
+			stack = push(stack, uint256.NewInt(0).AddMod(&x, &y, &z).Bytes()...)
+		case opMulMod:
+			var x, y, z uint256.Int
+			stack, x, y, z = pop3(stack)
+			stack = push(stack, uint256.NewInt(0).MulMod(&x, &y, &z).Bytes()...)
+		case opExp:
+			var x, y uint256.Int
+			stack, x, y = pop2(stack)
+			stack = push(stack, uint256.NewInt(0).Exp(&x, &y).Bytes()...)
 		}
 	}
 
@@ -98,13 +128,23 @@ func push(stack []uint256.Int, data ...byte) []uint256.Int {
 	return append([]uint256.Int{*i}, stack...)
 }
 
-func pop(stack []uint256.Int, n int) ([]uint256.Int, []uint256.Int, error) {
+func pop(stack []uint256.Int, n int) ([]uint256.Int, []uint256.Int) {
 	if n > len(stack) {
-		return stack, nil, errors.New("stack smaller than n")
+		panic(fmt.Errorf("stack len (%d) is smaller than %d", len(stack), n))
 	}
 	vals := make([]uint256.Int, n)
 	copy(vals, stack[:n])
-	return stack[n:], vals, nil
+	return stack[n:], vals
+}
+
+func pop2(stack []uint256.Int) ([]uint256.Int, uint256.Int, uint256.Int) {
+	stack, vals := pop(stack, 2)
+	return stack, vals[0], vals[1]
+}
+
+func pop3(stack []uint256.Int) ([]uint256.Int, uint256.Int, uint256.Int, uint256.Int) {
+	stack, vals := pop(stack, 3)
+	return stack, vals[0], vals[1], vals[2]
 }
 
 func main() {
