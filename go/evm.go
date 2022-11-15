@@ -46,6 +46,7 @@ const (
 	opPush1  = 0x60
 	opPush32 = 0x7f
 	opPop    = 0x50
+	opAdd    = 0x01
 )
 
 func evm(code []byte) (bool, []uint256.Int) {
@@ -62,6 +63,7 @@ func evm(code []byte) (bool, []uint256.Int) {
 			len := int(op-opPush1) + 1
 			stack = push(stack, code[pc:(pc+len)]...)
 			pc += len
+			continue
 		}
 
 		switch op {
@@ -73,21 +75,27 @@ func evm(code []byte) (bool, []uint256.Int) {
 				return false, stack
 			}
 			pc++
-		}
+		case opAdd:
+			var vals []uint256.Int
+			stack, vals, err = pop(stack, 2)
+			if err != nil {
+				return false, stack
+			}
+			total := uint256.NewInt(0).Add(&vals[0], &vals[1])
 
+			stack = push(stack, total.Bytes()...)
+		}
 	}
 
 	return true, stack
 }
 
 func push(stack []uint256.Int, data ...byte) []uint256.Int {
-	front := make([]uint256.Int, len(data))
-	for i, b := range data {
-		f := uint256.NewInt(uint64(b))
-		front[i] = *f
+	if len(data) > 32 {
+		panic("data too long")
 	}
-	stack = append(front, stack...)
-	return stack
+	i := uint256.NewInt(0).SetBytes(data)
+	return append([]uint256.Int{*i}, stack...)
 }
 
 func pop(stack []uint256.Int, n int) ([]uint256.Int, []uint256.Int, error) {
