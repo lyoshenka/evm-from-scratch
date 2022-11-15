@@ -76,11 +76,15 @@ const (
 	opPop    = 0x50
 	opPush1  = 0x60
 	opPush32 = 0x7f
+	opDup1   = 0x80
+	opDup16  = 0x8f
+	opSwap1  = 0x90
+	opSwap16 = 0x9f
+
+	opInvalid = 0xfe
 )
 
 func evm(code []byte) (success bool, stack []uint256.Int) {
-	pc := 0
-
 	defer func() {
 		if err := recover(); err != nil {
 			fmt.Printf("ERR: %v\n", err)
@@ -88,14 +92,38 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 		}
 	}()
 
+	pc := 0
+
 	for pc < len(code) {
 		op := code[pc]
 		pc++
 
-		if op >= opPush1 && op <= opPush32 { // cleaner than listing all push opcodes
-			len := int(op-opPush1) + 1
-			stack = push(stack, code[pc:(pc+len)]...)
-			pc += len
+		if op >= opPush1 && op <= opPush32 {
+			pushLen := int(op-opPush1) + 1
+			if pushLen > 32 {
+				return false, stack
+			}
+			bytes := code[pc:(pc + pushLen)]
+			stack = push(stack, uint256.NewInt(0).SetBytes(bytes))
+			pc += pushLen
+			continue
+		}
+
+		if op >= opDup1 && op <= opDup16 {
+			pos := int(op - opDup1)
+			if len(stack) < pos {
+				return false, stack
+			}
+			stack = push(stack, &stack[pos])
+			continue
+		}
+
+		if op >= opSwap1 && op <= opSwap16 {
+			pos := int(op-opSwap1) + 1
+			if len(stack) < pos {
+				return false, stack
+			}
+			stack[0], stack[pos] = stack[pos], stack[0]
 			continue
 		}
 
@@ -108,47 +136,47 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 		case opAdd:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Add(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Add(&x, &y))
 		case opMul:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Mul(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Mul(&x, &y))
 		case opSub:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Sub(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Sub(&x, &y))
 		case opDiv:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Div(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Div(&x, &y))
 		case opMod:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Mod(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Mod(&x, &y))
 		case opAddMod:
 			var x, y, z uint256.Int
 			stack, x, y, z = pop3(stack)
-			stack = push(stack, uint256.NewInt(0).AddMod(&x, &y, &z).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).AddMod(&x, &y, &z))
 		case opMulMod:
 			var x, y, z uint256.Int
 			stack, x, y, z = pop3(stack)
-			stack = push(stack, uint256.NewInt(0).MulMod(&x, &y, &z).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).MulMod(&x, &y, &z))
 		case opExp:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Exp(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Exp(&x, &y))
 		case opSignExtend:
 			var b, x uint256.Int
 			stack, b, x = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).ExtendSign(&x, &b).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).ExtendSign(&x, &b))
 		case opSDiv:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).SDiv(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).SDiv(&x, &y))
 		case opSMod:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).SMod(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).SMod(&x, &y))
 		case opLT:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
@@ -176,54 +204,53 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 		case opAnd:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).And(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).And(&x, &y))
 		case opOr:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Or(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Or(&x, &y))
 		case opXor:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Xor(&x, &y).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Xor(&x, &y))
 		case opNot:
 			var x uint256.Int
 			stack, x = pop1(stack)
-			stack = push(stack, uint256.NewInt(0).Not(&x).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Not(&x))
 		case opByte:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, y.Byte(&x).Bytes()...)
+			stack = push(stack, y.Byte(&x))
 		case opShl:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Lsh(&y, uint(x.Uint64())).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Lsh(&y, uint(x.Uint64())))
 		case opShr:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).Rsh(&y, uint(x.Uint64())).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).Rsh(&y, uint(x.Uint64())))
 		case opSar:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
-			stack = push(stack, uint256.NewInt(0).SRsh(&y, uint(x.Uint64())).Bytes()...)
+			stack = push(stack, uint256.NewInt(0).SRsh(&y, uint(x.Uint64())))
+		case opInvalid:
+			return false, stack
+
 		}
 	}
 
 	return true, stack
 }
 
-func push(stack []uint256.Int, data ...byte) []uint256.Int {
-	if len(data) > 32 {
-		panic("data too long")
-	}
-	i := uint256.NewInt(0).SetBytes(data)
+func push(stack []uint256.Int, i *uint256.Int) []uint256.Int {
 	return append([]uint256.Int{*i}, stack...)
 }
 
 func pushBool(stack []uint256.Int, b bool) []uint256.Int {
 	if b {
-		stack = push(stack, uint256.NewInt(1).Bytes()...)
+		stack = push(stack, uint256.NewInt(1))
 	} else {
-		stack = push(stack, uint256.NewInt(0).Bytes()...)
+		stack = push(stack, uint256.NewInt(0))
 	}
 	return stack
 }
