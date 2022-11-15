@@ -73,13 +73,18 @@ const (
 	opShr  = 0x1c
 	opSar  = 0x1d
 
-	opPop    = 0x50
-	opPush1  = 0x60
-	opPush32 = 0x7f
-	opDup1   = 0x80
-	opDup16  = 0x8f
-	opSwap1  = 0x90
-	opSwap16 = 0x9f
+	opPop      = 0x50
+	opJump     = 0x56
+	opJumpI    = 0x57
+	opPC       = 0x58
+	opGas      = 0x5a
+	opJumpDest = 0x5b
+	opPush1    = 0x60
+	opPush32   = 0x7f
+	opDup1     = 0x80
+	opDup16    = 0x8f
+	opSwap1    = 0x90
+	opSwap16   = 0x9f
 
 	opInvalid = 0xfe
 )
@@ -92,15 +97,15 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 		}
 	}()
 
-	pc := 0
+	pc := uint64(0)
 
-	for pc < len(code) {
+	for pc < uint64(len(code)) {
 		op := code[pc]
 		pc++
 
 		if op >= opPush1 && op <= opPush32 {
-			pushLen := int(op-opPush1) + 1
-			if pushLen > 32 {
+			pushLen := uint64(op-opPush1) + 1
+			if pushLen > 32 || uint64(len(code)) < pc+pushLen {
 				return false, stack
 			}
 			bytes := code[pc:(pc + pushLen)]
@@ -110,8 +115,8 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 		}
 
 		if op >= opDup1 && op <= opDup16 {
-			pos := int(op - opDup1)
-			if len(stack) < pos {
+			pos := uint64(op - opDup1)
+			if uint64(len(stack)) < pos {
 				return false, stack
 			}
 			stack = push(stack, &stack[pos])
@@ -119,8 +124,8 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 		}
 
 		if op >= opSwap1 && op <= opSwap16 {
-			pos := int(op-opSwap1) + 1
-			if len(stack) < pos {
+			pos := uint64(op-opSwap1) + 1
+			if uint64(len(stack)) < pos {
 				return false, stack
 			}
 			stack[0], stack[pos] = stack[pos], stack[0]
@@ -132,7 +137,6 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 			return true, stack
 		case opPop:
 			stack, _ = pop(stack, 1)
-			pc++
 		case opAdd:
 			var x, y uint256.Int
 			stack, x, y = pop2(stack)
@@ -235,11 +239,63 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 			stack = push(stack, uint256.NewInt(0).SRsh(&y, uint(x.Uint64())))
 		case opInvalid:
 			return false, stack
-
+		case opPC:
+			stack = push(stack, uint256.NewInt(pc-1))
+		case opGas:
+			// TODO: gas is not supported by this version of the course
+			stack = push(stack, uint256.NewInt(0).Not(uint256.NewInt(0)))
+		case opJump:
+			var dest uint256.Int
+			stack, dest = pop1(stack)
+			dest64, overflow := dest.Uint64WithOverflow()
+			if overflow || !validJumpDest(code, dest64) {
+				// overflow = dest is more than MaxUint64, and Go can't handle that
+				return false, stack
+			}
+			pc = dest64
+		case opJumpDest: // noop
+		case opJumpI:
+			var dest, doJump uint256.Int
+			stack, dest, doJump = pop2(stack)
+			dest64, overflow := dest.Uint64WithOverflow()
+			if overflow || !validJumpDest(code, dest64) {
+				// overflow = dest is more than MaxUint64, and Go can't handle that
+				return false, stack
+			}
+			if !doJump.IsZero() {
+				pc = dest64
+			}
 		}
 	}
 
 	return true, stack
+}
+
+func validJumpDest(code []byte, dest uint64) bool {
+	if uint64(len(code)) < dest {
+		return false // destination is past the end of the code
+	}
+	if code[dest] != opJumpDest {
+		return false
+	}
+
+	// loop through code and make sure jump dest is not inside PUSH data
+	for pc := uint64(0); pc < uint64(len(code)); {
+		op := code[pc]
+		pc++
+
+		if op < opPush1 || op > opPush32 {
+			continue
+		}
+
+		numBitsToPush := uint64(op) - opPush1 + 1
+		if pc <= dest && dest < pc+numBitsToPush {
+			return false
+		}
+		pc += numBitsToPush
+	}
+
+	return true
 }
 
 func push(stack []uint256.Int, i *uint256.Int) []uint256.Int {
