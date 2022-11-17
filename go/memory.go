@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/holiman/uint256"
+	"golang.org/x/crypto/sha3"
 )
 
 type Memory struct {
@@ -25,6 +26,13 @@ func (m *Memory) PutByte(offset uint64, val byte) {
 func (m *Memory) Get(offset uint64) *uint256.Int {
 	m.expandIfNeeded(offset, 32)
 	return uint256.NewInt(0).SetBytes(m.data[offset : offset+32])
+}
+
+func (m *Memory) Sha3(offset, size uint64) *uint256.Int {
+	m.expandIfNeeded(offset, size)
+	h := sha3.NewLegacyKeccak256()
+	h.Write(m.data[offset : offset+size])
+	return uint256.NewInt(0).SetBytes(h.Sum(nil))
 }
 
 func (m *Memory) expandIfNeeded(offset, size uint64) {

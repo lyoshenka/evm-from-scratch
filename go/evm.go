@@ -36,6 +36,7 @@ const (
 	opExp    = 0x0a
 
 	opSignExtend = 0x0b
+	opSha3       = 0x20
 
 	opLT     = 0x10
 	opGT     = 0x11
@@ -265,6 +266,10 @@ func evm(code []byte) (success bool, stack []uint256.Int) {
 			mem.PutByte(offset.Uint64(), byte(val.Uint64()))
 		case opMSize:
 			stack = push(stack, uint256.NewInt(mem.Len()))
+		case opSha3:
+			var offset, size uint256.Int
+			stack, offset, size = pop2(stack)
+			stack = push(stack, mem.Sha3(offset.Uint64(), size.Uint64()))
 		}
 	}
 
